@@ -103,6 +103,8 @@ class TripletLoss(object):
             self.ranking_loss = nn.SoftMarginLoss()
 
     def __call__(self, global_feat, labels, normalize_feature=False):
+        if labels.shape[0] == 0 or all(labels == labels[0]):
+            return torch.zeros(1)
         if normalize_feature:
             global_feat = normalize(global_feat, axis=-1)
         dist_mat = euclidean_dist(global_feat, global_feat)

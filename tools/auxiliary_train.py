@@ -14,7 +14,7 @@ from torch.backends import cudnn
 sys.path.append('.')
 from config import cfg
 from data import make_data_loader
-from engine.trainer import do_train, do_train_with_center
+from engine.auxiliary_trainer import do_train, do_train_with_center
 from modeling import build_model
 from layers import make_loss, make_loss_with_center
 from solver import make_optimizer, make_optimizer_with_center, WarmupMultiStepLR
@@ -24,10 +24,11 @@ from utils.logger import setup_logger
 
 def train(cfg):
     # prepare dataset
-    train_loader, val_loader, num_query, num_classes, _ = make_data_loader(cfg)
+    train_loader, val_loader, num_query, num_classes, dataset = make_data_loader(cfg)
 
     # prepare model
     model = build_model(cfg, num_classes)
+    model_twin = build_model(cfg, num_classes)
 
     if cfg.MODEL.IF_WITH_CENTER == 'no':
         print('Train without center loss, the loss type is', cfg.MODEL.METRIC_LOSS_TYPE)
@@ -76,6 +77,9 @@ def train(cfg):
 
         arguments = {}
 
+        loss_func_twin, center_criterion_twin = make_loss_with_center(cfg, num_classes)
+        optimizer_twin, optimizer_center_twin = make_optimizer_with_center(cfg, model_twin, center_criterion_twin)
+
         # Add for using self trained model
         if cfg.MODEL.PRETRAIN_CHOICE == 'self':
             start_epoch = eval(cfg.MODEL.PRETRAIN_PATH.split('/')[-1].split('.')[0].split('_')[-1])
@@ -96,21 +100,23 @@ def train(cfg):
             start_epoch = 0
             scheduler = WarmupMultiStepLR(optimizer, cfg.SOLVER.STEPS, cfg.SOLVER.GAMMA, cfg.SOLVER.WARMUP_FACTOR,
                                           cfg.SOLVER.WARMUP_ITERS, cfg.SOLVER.WARMUP_METHOD)
+            scheduler_twin = WarmupMultiStepLR(optimizer_twin, cfg.SOLVER.STEPS, cfg.SOLVER.GAMMA, cfg.SOLVER.WARMUP_FACTOR,
+                                          cfg.SOLVER.WARMUP_ITERS, cfg.SOLVER.WARMUP_METHOD)
         else:
             print('Only support pretrain_choice for imagenet and self, but got {}'.format(cfg.MODEL.PRETRAIN_CHOICE))
 
+        model_structure = [model, loss_func, center_criterion, optimizer, optimizer_center, scheduler]
+        model_structure_twin = [model_twin, loss_func_twin, center_criterion_twin, optimizer_twin, optimizer_center_twin, scheduler_twin]
+
         do_train_with_center(
             cfg,
-            model,
-            center_criterion,
             train_loader,
             val_loader,
-            optimizer,
-            optimizer_center,
-            scheduler,      # modify for using self trained model
-            loss_func,
             num_query,
-            start_epoch     # add for using self trained model
+            start_epoch,     # add for using self trained model
+            dataset.pid_base, # target_start
+            model_structure,
+            model_structure_twin
         )
     else:
         print("Unsupported value for cfg.MODEL.IF_WITH_CENTER {}, only support yes or no!\n".format(cfg.MODEL.IF_WITH_CENTER))
