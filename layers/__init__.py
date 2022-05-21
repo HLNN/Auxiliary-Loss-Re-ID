@@ -12,14 +12,15 @@ from .center_loss import CenterLoss
 
 def make_loss(cfg, num_classes):    # modified by gu
     sampler = cfg.DATALOADER.SAMPLER
+    auxiliary_w = cfg.MODEL.AUXILIARY_WEIGHT
     if cfg.MODEL.METRIC_LOSS_TYPE == 'triplet':
-        triplet = TripletLoss(cfg.SOLVER.MARGIN)  # triplet loss
+        triplet = TripletLoss(cfg.SOLVER.MARGIN, auxiliary_w=auxiliary_w)  # triplet loss
     else:
         print('expected METRIC_LOSS_TYPE should be triplet'
               'but got {}'.format(cfg.MODEL.METRIC_LOSS_TYPE))
 
     if cfg.MODEL.IF_LABELSMOOTH == 'on':
-        xent = CrossEntropyLabelSmooth(num_classes=num_classes)     # new add by luo
+        xent = CrossEntropyLabelSmooth(num_classes=num_classes, auxiliary_w=auxiliary_w)     # new add by luo
         print("label smooth on, numclasses:", num_classes)
 
     if sampler == 'softmax':
@@ -45,24 +46,25 @@ def make_loss(cfg, num_classes):    # modified by gu
 
 
 def make_loss_with_center(cfg, num_classes):    # modified by gu
+    auxiliary_w = cfg.MODEL.AUXILIARY_WEIGHT
     if cfg.MODEL.NAME == 'resnet18' or cfg.MODEL.NAME == 'resnet34':
         feat_dim = 512
     else:
         feat_dim = 2048
 
     if cfg.MODEL.METRIC_LOSS_TYPE == 'center':
-        center_criterion = CenterLoss(num_classes=num_classes, feat_dim=feat_dim, use_gpu=True)  # center loss
+        center_criterion = CenterLoss(num_classes=num_classes, feat_dim=feat_dim, use_gpu=True, auxiliary_w=auxiliary_w)  # center loss
 
     elif cfg.MODEL.METRIC_LOSS_TYPE == 'triplet_center':
-        triplet = TripletLoss(cfg.SOLVER.MARGIN)  # triplet loss
-        center_criterion = CenterLoss(num_classes=num_classes, feat_dim=feat_dim, use_gpu=True)  # center loss
+        triplet = TripletLoss(cfg.SOLVER.MARGIN, auxiliary_w=auxiliary_w)  # triplet loss
+        center_criterion = CenterLoss(num_classes=num_classes, feat_dim=feat_dim, use_gpu=True, auxiliary_w=auxiliary_w)  # center loss
 
     else:
         print('expected METRIC_LOSS_TYPE with center should be center, triplet_center'
               'but got {}'.format(cfg.MODEL.METRIC_LOSS_TYPE))
 
     if cfg.MODEL.IF_LABELSMOOTH == 'on':
-        xent = CrossEntropyLabelSmooth(num_classes=num_classes)     # new add by luo
+        xent = CrossEntropyLabelSmooth(num_classes=num_classes, auxiliary_w=auxiliary_w)     # new add by luo
         print("label smooth on, numclasses:", num_classes)
 
     def loss_func(score, feat, target):

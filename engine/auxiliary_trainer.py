@@ -74,7 +74,8 @@ def create_supervised_trainer_with_center(cetner_loss_weight, model_structure, m
     model, loss_fn, center_criterion, optimizer, optimizer_center, scheduler = model_structure
     model_twin, loss_fn_twin, center_criterion_twin, optimizer_twin, optimizer_center_twin, scheduler_twin = model_structure_twin
     if True:
-        loss_fn_twin, center_criterion_twin = loss_fn, center_criterion
+        pass
+        # loss_fn_twin, center_criterion_twin = loss_fn, center_criterion
     auxiliary_weight = AuxiliaryWeight()
     aux_optim = optim.AdamW(auxiliary_weight.parameters(), lr=0.001, betas=[0.5, 0.9], weight_decay=0.2)
 
@@ -93,7 +94,9 @@ def create_supervised_trainer_with_center(cetner_loss_weight, model_structure, m
         img = img.to(device) if torch.cuda.device_count() >= 1 else img
         target = target.to(device) if torch.cuda.device_count() >= 1 else target
 
+        # copy model
         model_twin.load_state_dict(model.state_dict())
+        center_criterion_twin.load_state_dict(center_criterion.state_dict())
 
         model.train()
         model_twin.train()
@@ -105,26 +108,25 @@ def create_supervised_trainer_with_center(cetner_loss_weight, model_structure, m
         # update twin model with full img and loss
         model.zero_grad()
         model_twin.zero_grad()
-        source_mask = target < target_start
-        target_mask = target >= target_start
         with torch.no_grad():
             w = auxiliary_weight()
+        source_mask = target < target_start
+        target_mask = target >= target_start
+        mask = source_mask * w + target_mask
 
-        score, feat = model_twin(img)
-        loss_main_twin = loss_fn(score[target_mask], feat[target_mask], target[target_mask])
-        loss_auxiliary_twin = loss_fn_twin(score[source_mask], feat[source_mask], target[source_mask])
+        score_twin, feat_twin = model_twin(img)
+        loss_twin = loss_fn_twin(score_twin, feat_twin, target)
         # print("Total loss is {}, center loss is {}".format(loss, center_criterion(feat, target)))
-        loss_twin = loss_main_twin + w * loss_auxiliary_twin
+        loss_twin = (loss_twin * mask).mean()
         loss_twin.backward()
         optimizer_twin.step()
-        optimizer_center_twin.step()
 
         # update auxiliary weight
         w = auxiliary_weight()
         score, feat = model(img)
         score_twin, feat_twin = model_twin(img)
-        loss_main = loss_fn(score[target_mask], feat[target_mask], target[target_mask])
-        loss_main_twin = loss_fn(score_twin[target_mask], feat_twin[target_mask], target[target_mask])
+        loss_main = (loss_fn(score, feat, target) * target_mask).mean()
+        loss_main_twin = (loss_fn(score_twin, feat_twin, target) * target_mask).mean()
         model.zero_grad()
         model_twin.zero_grad()
         loss_main.backward()
@@ -137,13 +139,13 @@ def create_supervised_trainer_with_center(cetner_loss_weight, model_structure, m
         # update model
         model.zero_grad()
         model_twin.zero_grad()
+        optimizer_center.zero_grad()
         with torch.no_grad():
             w = auxiliary_weight()
         score, feat = model(img)
-        loss_main = loss_fn(score[target_mask], feat[target_mask], target[target_mask])
-        loss_auxiliary = loss_fn_twin(score[source_mask], feat[source_mask], target[source_mask])
+        loss = loss_fn(score, feat, target)
+        loss = (loss * mask).mean()
         # print("Total loss is {}, center loss is {}".format(loss, center_criterion(feat, target)))
-        loss = loss_main + w * loss_auxiliary
         loss.backward()
         optimizer.step()
         optimizer_center.step()

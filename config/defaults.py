@@ -43,6 +43,8 @@ _C.MODEL.METRIC_LOSS_TYPE = 'triplet'
 # If train with label smooth, options: 'on', 'off'
 _C.MODEL.IF_LABELSMOOTH = 'on'
 
+_C.MODEL.AUXILIARY_WEIGHT = False
+
 
 # -----------------------------------------------------------------------------
 # INPUT

@@ -15,8 +15,9 @@ class CenterLoss(nn.Module):
         feat_dim (int): feature dimension.
     """
 
-    def __init__(self, num_classes=751, feat_dim=2048, use_gpu=True):
+    def __init__(self, num_classes=751, feat_dim=2048, use_gpu=True, auxiliary_w=False):
         super(CenterLoss, self).__init__()
+        self.reduction = 'none' if auxiliary_w else 'mean'
         self.num_classes = num_classes
         self.feat_dim = feat_dim
         self.use_gpu = use_gpu
@@ -45,7 +46,11 @@ class CenterLoss(nn.Module):
         mask = labels.eq(classes.expand(batch_size, self.num_classes))
 
         dist = distmat * mask.float()
-        loss = dist.clamp(min=1e-12, max=1e+12).sum() / batch_size
+        # loss = dist.clamp(min=1e-12, max=1e+12).sum() / batch_size
+        if self.reduction == 'mean':
+            loss = dist.clamp(min=1e-12, max=1e+12).mean(0).sum()
+        else:
+            loss = dist.clamp(min=1e-12, max=1e+12).sum(dim=1)
         #dist = []
         #for i in range(batch_size):
         #    value = distmat[i][mask[i]]

@@ -95,12 +95,13 @@ class TripletLoss(object):
     Related Triplet Loss theory can be found in paper 'In Defense of the Triplet
     Loss for Person Re-Identification'."""
 
-    def __init__(self, margin=None):
+    def __init__(self, margin=None, auxiliary_w=False):
         self.margin = margin
+        reduction = 'none' if auxiliary_w else 'mean'
         if margin is not None:
-            self.ranking_loss = nn.MarginRankingLoss(margin=margin)
+            self.ranking_loss = nn.MarginRankingLoss(margin=margin, reduction=reduction)
         else:
-            self.ranking_loss = nn.SoftMarginLoss()
+            self.ranking_loss = nn.SoftMarginLoss(reduction=reduction)
 
     def __call__(self, global_feat, labels, normalize_feature=False):
         if labels.shape[0] == 0 or all(labels == labels[0]):
@@ -117,6 +118,7 @@ class TripletLoss(object):
             loss = self.ranking_loss(dist_an - dist_ap, y)
         return loss, dist_ap, dist_an
 
+
 class CrossEntropyLabelSmooth(nn.Module):
     """Cross entropy loss with label smoothing regularizer.
 
@@ -128,8 +130,9 @@ class CrossEntropyLabelSmooth(nn.Module):
         num_classes (int): number of classes.
         epsilon (float): weight.
     """
-    def __init__(self, num_classes, epsilon=0.1, use_gpu=True):
+    def __init__(self, num_classes, epsilon=0.1, use_gpu=True, auxiliary_w=False):
         super(CrossEntropyLabelSmooth, self).__init__()
+        self.reduction = 'none' if auxiliary_w else 'mean'
         self.num_classes = num_classes
         self.epsilon = epsilon
         self.use_gpu = use_gpu
@@ -145,5 +148,8 @@ class CrossEntropyLabelSmooth(nn.Module):
         targets = torch.zeros(log_probs.size()).scatter_(1, targets.unsqueeze(1).data.cpu(), 1)
         if self.use_gpu: targets = targets.cuda()
         targets = (1 - self.epsilon) * targets + self.epsilon / self.num_classes
-        loss = (- targets * log_probs).mean(0).sum()
+        if self.reduction == 'mean':
+            loss = (- targets * log_probs).mean(0).sum()
+        else:
+            loss = (- targets * log_probs).sum(dim=1)
         return loss
