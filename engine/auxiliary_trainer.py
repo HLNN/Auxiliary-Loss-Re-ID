@@ -56,7 +56,7 @@ def create_supervised_trainer(model, optimizer, loss_fn,
     return Engine(_update)
 
 
-def create_supervised_trainer_with_center(cetner_loss_weight, model_structure, model_structure_twin,
+def create_supervised_trainer_with_center(cetner_loss_weight, model_structure, model_structure_twin, auxiliary_weight,
                                           target_start=0, device=None):
     """
     Factory function for creating a trainer for supervised models
@@ -76,7 +76,6 @@ def create_supervised_trainer_with_center(cetner_loss_weight, model_structure, m
     if True:
         pass
         # loss_fn_twin, center_criterion_twin = loss_fn, center_criterion
-    auxiliary_weight = AuxiliaryWeight()
     aux_optim = optim.AdamW(auxiliary_weight.parameters(), lr=0.001, betas=[0.5, 0.9], weight_decay=0.2)
 
     if device:
@@ -295,7 +294,11 @@ def do_train_with_center(
     logger = logging.getLogger("reid_baseline.train")
     logger.info("Start training")
 
-    trainer = create_supervised_trainer_with_center(cfg.SOLVER.CENTER_LOSS_WEIGHT, model_structure, model_structure_twin,
+    auxiliary_weight = AuxiliaryWeight()
+
+    trainer = create_supervised_trainer_with_center(cfg.SOLVER.CENTER_LOSS_WEIGHT,
+                                                    model_structure, model_structure_twin,
+                                                    auxiliary_weight,
                                                     target_start, device=device)
 
     evaluator = create_supervised_evaluator(model, metrics={'r1_mAP': R1_mAP(num_query, max_rank=50, feat_norm=cfg.TEST.FEAT_NORM)}, device=device)
@@ -329,10 +332,10 @@ def do_train_with_center(
         ITER += 1
 
         if ITER % log_period == 0:
-            logger.info("Epoch[{}] Iteration[{}/{}] Loss: {:.3f}, Acc: {:.3f}, Base Lr: {:.2e}"
+            logger.info("Epoch[{}] Iteration[{}/{}] Loss: {:.3f}, Acc: {:.3f}, Base Lr: {:.2e}, W: {:.3f}"
                         .format(engine.state.epoch, ITER, len(train_loader),
                                 engine.state.metrics['avg_loss'], engine.state.metrics['avg_acc'],
-                                scheduler.get_lr()[0]))
+                                scheduler.get_lr()[0], auxiliary_weight().item()))
         if len(train_loader) == ITER:
             ITER = 0
 
