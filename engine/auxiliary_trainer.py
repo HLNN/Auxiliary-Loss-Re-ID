@@ -141,6 +141,7 @@ def create_supervised_trainer_with_center(cetner_loss_weight, model_structure, m
         optimizer_center.zero_grad()
         with torch.no_grad():
             w = auxiliary_weight()
+        mask = source_mask * w + target_mask
         score, feat = model(img)
         loss = loss_fn(score, feat, target)
         loss = (loss * mask).mean()
