@@ -21,7 +21,7 @@ class MergedDataLoader(BaseImageDataset):
         datasets = [init_dataset(name, root=root) for name in names]
 
         # TODO how to sample?
-        trains = [random.choices(d.train, k=int(d.num_train_imgs * p)) for d, p in zip(datasets, props)]
+        trains = [random.choices(d.train, k=int(d.num_train_imgs * p)) if p < 1. else d.train for d, p in zip(datasets, props)]
         if len(trains) == 1:
             train = trains[0]
             query = datasets[0].query
