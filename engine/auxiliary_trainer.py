@@ -86,6 +86,7 @@ def create_supervised_trainer_with_center(cetner_loss_weight, model_structure, m
         model.to(device)
         model_twin.to(device)
         auxiliary_weight.to(device)
+    grad_list = []
 
     def _update(engine, batch):
         # prepare data
@@ -109,9 +110,15 @@ def create_supervised_trainer_with_center(cetner_loss_weight, model_structure, m
         model_twin.zero_grad()
         with torch.no_grad():
             w = auxiliary_weight()
-        source_mask = target < target_start
-        target_mask = target >= target_start
-        mask = source_mask * w + target_mask
+
+        if w.shape[0] == 1:
+            source_mask = target < target_start
+            target_mask = target >= target_start
+            mask = source_mask * w + target_mask
+        else:
+            source_mask = target < target_start
+            target_mask = target >= target_start
+            mask = w[target * source_mask] * source_mask + target_mask
 
         score_twin, feat_twin = model_twin(img)
         loss_twin = loss_fn_twin(score_twin, feat_twin, target)
@@ -130,10 +137,25 @@ def create_supervised_trainer_with_center(cetner_loss_weight, model_structure, m
         model_twin.zero_grad()
         loss_main.backward()
         loss_main_twin.backward()
-        loss_w = w * param_grad_dot(model.classifier.weight.grad, model_twin.classifier.weight.grad)
-        aux_optim.zero_grad()
-        loss_w.backward()
-        aux_optim.step()
+
+        update_w = True
+        if w.shape[0] == 1:
+            loss_w = w * param_grad_dot(model.classifier.weight.grad, model_twin.classifier.weight.grad)
+        else:
+            loss_w = sum([w[t] for t, m in zip(target, source_mask) if m]) * 20 * \
+                     param_grad_dot(model.classifier.weight.grad, model_twin.classifier.weight.grad) + \
+                     sum(w) * .1
+            grad = param_grad_dot(model.classifier.weight.grad, model_twin.classifier.weight.grad).item()
+            grad_list.append(grad)
+            if grad < 0:
+                pass
+            if int(sum(source_mask)) == 0:
+                update_w = False
+
+        if update_w:
+            aux_optim.zero_grad()
+            loss_w.backward()
+            aux_optim.step()
 
         # update model
         model.zero_grad()
@@ -141,7 +163,14 @@ def create_supervised_trainer_with_center(cetner_loss_weight, model_structure, m
         optimizer_center.zero_grad()
         with torch.no_grad():
             w = auxiliary_weight()
-        mask = source_mask * w + target_mask
+        if w.shape[0] == 1:
+            source_mask = target < target_start
+            target_mask = target >= target_start
+            mask = source_mask * w + target_mask
+        else:
+            source_mask = target < target_start
+            target_mask = target >= target_start
+            mask = w[target * source_mask] * source_mask + target_mask
         score, feat = model(img)
         loss = loss_fn(score, feat, target)
         loss = (loss * mask).mean()
@@ -295,6 +324,7 @@ def do_train_with_center(
     logger = logging.getLogger("reid_baseline.train")
     logger.info("Start training")
 
+    # auxiliary_weight = AuxiliaryWeight(size=target_start)
     auxiliary_weight = AuxiliaryWeight()
 
     trainer = create_supervised_trainer_with_center(cfg.SOLVER.CENTER_LOSS_WEIGHT,
@@ -336,7 +366,7 @@ def do_train_with_center(
             logger.info("Epoch[{}] Iteration[{}/{}] Loss: {:.3f}, Acc: {:.3f}, Base Lr: {:.2e}, W: {:.3f}"
                         .format(engine.state.epoch, ITER, len(train_loader),
                                 engine.state.metrics['avg_loss'], engine.state.metrics['avg_acc'],
-                                scheduler.get_lr()[0], auxiliary_weight().item()))
+                                scheduler.get_lr()[0], auxiliary_weight.mean().item()))
         if len(train_loader) == ITER:
             ITER = 0
 
