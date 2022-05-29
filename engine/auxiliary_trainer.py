@@ -152,6 +152,8 @@ def create_supervised_trainer_with_center(cetner_loss_weight, model_structure, m
             if int(sum(source_mask)) == 0:
                 update_w = False
 
+        loss_w *= -1
+
         if update_w:
             aux_optim.zero_grad()
             loss_w.backward()
