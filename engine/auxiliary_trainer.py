@@ -56,7 +56,8 @@ def create_supervised_trainer(model, optimizer, loss_fn,
     return Engine(_update)
 
 
-def create_supervised_trainer_with_center(cetner_loss_weight, model_structure, model_structure_twin, auxiliary_weight,
+def create_supervised_trainer_with_center(cetner_loss_weight, model_structure, model_structure_twin,
+                                          auxiliary_weight, train_loader2,
                                           target_start=0, device=None):
     """
     Factory function for creating a trainer for supervised models
@@ -86,14 +87,16 @@ def create_supervised_trainer_with_center(cetner_loss_weight, model_structure, m
         model.to(device)
         model_twin.to(device)
         auxiliary_weight.to(device)
+
+    def sample_data(data_loader):
+        while True:
+            for batch in data_loader:
+                yield batch
+    train_loader2 = sample_data(train_loader2)
+
     grad_list = []
 
     def _update(engine, batch):
-        # prepare data
-        img, target = batch
-        img = img.to(device) if torch.cuda.device_count() >= 1 else img
-        target = target.to(device) if torch.cuda.device_count() >= 1 else target
-
         # copy model
         model_twin.load_state_dict(model.state_dict())
         center_criterion_twin.load_state_dict(center_criterion.state_dict())
@@ -104,6 +107,11 @@ def create_supervised_trainer_with_center(cetner_loss_weight, model_structure, m
         optimizer_center.zero_grad()
         optimizer_twin.zero_grad()
         optimizer_center_twin.zero_grad()
+
+        # prepare data for update twin model
+        img, target = next(train_loader2)
+        img = img.to(device) if torch.cuda.device_count() >= 1 else img
+        target = target.to(device) if torch.cuda.device_count() >= 1 else target
 
         # update twin model with full img and loss
         model.zero_grad()
@@ -126,6 +134,11 @@ def create_supervised_trainer_with_center(cetner_loss_weight, model_structure, m
         loss_twin = (loss_twin * mask).mean()
         loss_twin.backward()
         optimizer_twin.step()
+
+        # prepare data
+        img, target = batch
+        img = img.to(device) if torch.cuda.device_count() >= 1 else img
+        target = target.to(device) if torch.cuda.device_count() >= 1 else target
 
         # update auxiliary weight
         w = auxiliary_weight()
@@ -306,6 +319,7 @@ def do_train(
 def do_train_with_center(
         cfg,
         train_loader,
+        train_loader2,
         val_loader,
         num_query,
         start_epoch,
@@ -331,7 +345,7 @@ def do_train_with_center(
 
     trainer = create_supervised_trainer_with_center(cfg.SOLVER.CENTER_LOSS_WEIGHT,
                                                     model_structure, model_structure_twin,
-                                                    auxiliary_weight,
+                                                    auxiliary_weight, train_loader2,
                                                     target_start, device=device)
 
     evaluator = create_supervised_evaluator(model, metrics={'r1_mAP': R1_mAP(num_query, max_rank=50, feat_norm=cfg.TEST.FEAT_NORM)}, device=device)

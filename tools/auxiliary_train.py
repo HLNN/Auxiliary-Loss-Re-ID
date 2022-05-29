@@ -8,6 +8,8 @@ import argparse
 import os
 import sys
 import torch
+import numpy as np
+import random
 
 from torch.backends import cudnn
 
@@ -22,9 +24,21 @@ from solver import make_optimizer, make_optimizer_with_center, WarmupMultiStepLR
 from utils.logger import setup_logger
 
 
+def set_seed(seed):
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    np.random.seed(seed)
+    random.seed(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = True
+
 def train(cfg):
     # prepare dataset
+    set_seed(555)
     train_loader, val_loader, num_query, num_classes, dataset = make_data_loader(cfg)
+    set_seed(666)
+    train_loader2, val_loader2, num_query2, num_classes2, dataset2 = make_data_loader(cfg)
 
     # prepare model
     model = build_model(cfg, num_classes)
@@ -111,6 +125,7 @@ def train(cfg):
         do_train_with_center(
             cfg,
             train_loader,
+            train_loader2,
             val_loader,
             num_query,
             start_epoch,     # add for using self trained model
